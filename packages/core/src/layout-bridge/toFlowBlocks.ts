@@ -279,6 +279,18 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
         break;
       }
 
+      case 'characterSpacing': {
+        // OOXML w:spacing on rPr is character-spacing in twips (twentieths
+        // of a point). For right-aligned text in a cell with tcMar=0, the
+        // trailing letter-spacing is what produces Word's "tiny gap" before
+        // the cell border — without this, text touches the right edge.
+        const spacingTwips = mark.attrs.spacing as number | null;
+        if (spacingTwips != null && spacingTwips !== 0) {
+          formatting.letterSpacing = twipsToPixels(spacingTwips);
+        }
+        break;
+      }
+
       case 'superscript':
         formatting.superscript = true;
         break;
@@ -925,7 +937,12 @@ function extractCellBorders(
 /**
  * Convert a table cell node.
  */
-function convertTableCell(node: PMNode, startPos: number, options: ToFlowBlocksOptions): TableCell {
+function convertTableCell(
+  node: PMNode,
+  startPos: number,
+  options: ToFlowBlocksOptions,
+  tableCellMargins?: { top?: number; bottom?: number; left?: number; right?: number }
+): TableCell {
   const blocks: FlowBlock[] = [];
   let offset = startPos + 1; // +1 for opening tag
 
@@ -946,16 +963,38 @@ function convertTableCell(node: PMNode, startPos: number, options: ToFlowBlocksO
       ? twipsToPixels(widthValue)
       : undefined;
 
-  // Convert cell margins (twips) to pixel padding
-  // OOXML TableNormal defaults: top=0, bottom=0, left=108 twips (~7px), right=108 twips (~7px)
+  // Resolve cell padding via the OOXML cascade (§17.4.41 + §17.4.79):
+  //   1. cell w:tcMar (per-side, only when value > 0 — Word treats an
+  //      explicit zero as "fall through, not literal zero")
+  //   2. table-level w:tblCellMar / resolved table style's tblPr.cellMargins
+  //
+  // Tier 2 is fully resolved upstream by toProseDoc.convertTable, which
+  // walks the inline tblCellMar → table-style → basedOn chain → default
+  // table style cascade. We just consume the flattened result here. There
+  // is no hardcoded "TableNormal default" fallback any more — any document
+  // with a styles.xml will have its default table style's cellMargins
+  // already in tableCellMargins; a document genuinely missing every tier
+  // renders with 0 padding (the spec literal), which is correct for that
+  // edge case.
   const margins = attrs.margins as
     | { top?: number; bottom?: number; left?: number; right?: number }
     | undefined;
+  const resolveSide = (cellTwips: number | undefined, tableTwips: number | undefined): number => {
+    if (cellTwips != null) {
+      const px = twipsToPixels(cellTwips);
+      if (px > 0) return px;
+    }
+    if (tableTwips != null) {
+      const px = twipsToPixels(tableTwips);
+      if (px >= 0) return px;
+    }
+    return 0;
+  };
   const padding = {
-    top: margins?.top != null ? twipsToPixels(margins.top) : 0,
-    right: margins?.right != null ? twipsToPixels(margins.right) : 7,
-    bottom: margins?.bottom != null ? twipsToPixels(margins.bottom) : 0,
-    left: margins?.left != null ? twipsToPixels(margins.left) : 7,
+    top: resolveSide(margins?.top, tableCellMargins?.top),
+    right: resolveSide(margins?.right, tableCellMargins?.right),
+    bottom: resolveSide(margins?.bottom, tableCellMargins?.bottom),
+    left: resolveSide(margins?.left, tableCellMargins?.left),
   };
 
   return {
@@ -976,13 +1015,18 @@ function convertTableCell(node: PMNode, startPos: number, options: ToFlowBlocksO
 /**
  * Convert a table row node.
  */
-function convertTableRow(node: PMNode, startPos: number, options: ToFlowBlocksOptions): TableRow {
+function convertTableRow(
+  node: PMNode,
+  startPos: number,
+  options: ToFlowBlocksOptions,
+  tableCellMargins?: { top?: number; bottom?: number; left?: number; right?: number }
+): TableRow {
   const cells: TableCell[] = [];
   let offset = startPos + 1; // +1 for opening tag
 
   node.forEach((child) => {
     if (child.type.name === 'tableCell' || child.type.name === 'tableHeader') {
-      cells.push(convertTableCell(child, offset, options));
+      cells.push(convertTableCell(child, offset, options, tableCellMargins));
     }
     offset += child.nodeSize;
   });
@@ -1004,9 +1048,16 @@ function convertTable(node: PMNode, startPos: number, options: ToFlowBlocksOptio
   const rows: TableRow[] = [];
   let offset = startPos + 1; // +1 for opening tag
 
+  // Read the table-level <w:tblCellMar> default cell margins (twips). Cells
+  // cascade to this when their own w:tcMar is absent or explicit-zero. PM
+  // stores it as `cellMargins: { top, bottom, left, right }` in twips.
+  const tableCellMargins = node.attrs.cellMargins as
+    | { top?: number; bottom?: number; left?: number; right?: number }
+    | undefined;
+
   node.forEach((child) => {
     if (child.type.name === 'tableRow') {
-      rows.push(convertTableRow(child, offset, options));
+      rows.push(convertTableRow(child, offset, options, tableCellMargins));
     }
     offset += child.nodeSize;
   });

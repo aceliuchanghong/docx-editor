@@ -322,6 +322,12 @@ function renderInlineImageRun(run: ImageRun, doc: Document): HTMLElement {
   img.src = run.src;
   img.width = run.width;
   img.height = run.height;
+  // Lock dimensions explicitly: when only the width/height attributes are set,
+  // browsers may compute height from the natural aspect ratio (e.g. wp:extent
+  // 1771650×278918 EMU rounds to 186×29 px but native 800×126 px gives 29.29 px,
+  // overflowing the cell by ~0.3 px and clipping the bottom of the logo).
+  img.style.width = `${run.width}px`;
+  img.style.height = `${run.height}px`;
   if (run.alt) {
     img.alt = run.alt;
   }
@@ -329,8 +335,12 @@ function renderInlineImageRun(run: ImageRun, doc: Document): HTMLElement {
     img.style.transform = run.transform;
   }
 
-  // Inline images should flow with text
-  img.style.display = 'inline';
+  // Use middle alignment — when the image's containing line was sized
+  // with extra leading on both sides (imageH + 2*descent), middle puts
+  // the image roughly at line center with visible padding above and
+  // below, matching Word's render. (Pure baseline/top would land flush
+  // with the line edge; middle is also Tailwind's preflight default so
+  // we set it explicitly for documentation.)
   img.style.verticalAlign = 'middle';
 
   applyPmPositions(img, run.pmStart, run.pmEnd);
@@ -640,6 +650,16 @@ export function renderLine(
 
   // Get runs for this line
   const runsForLine = sliceRunsForLine(block, line);
+
+  // Image-only line: vAlign-center the image inside the line's box. Without
+  // this, vertical-align math (baseline / middle / top) all leave the image
+  // either flush with one edge or overflowing — the line's ascent/descent
+  // can't be reconciled with parent-font baseline rules well enough to
+  // center automatically. Flex centering is unambiguous.
+  if (runsForLine.length === 1 && isImageRun(runsForLine[0])) {
+    lineEl.style.display = 'flex';
+    lineEl.style.alignItems = 'center';
+  }
 
   // Handle empty lines
   if (runsForLine.length === 0) {

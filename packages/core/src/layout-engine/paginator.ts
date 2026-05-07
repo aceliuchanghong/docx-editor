@@ -251,9 +251,11 @@ export function createPaginator(options: PaginatorOptions) {
     // Ensure we have space
     const state = ensureFits(totalHeight);
 
-    // If we moved to a new page/column, no space before needed
-    const isAtTop = state.cursorY === state.topMargin;
-    const actualSpaceBefore = isAtTop ? 0 : effectiveSpaceBefore;
+    // Word 2013+ (compatibilityMode ≥ 15) honors an explicit w:before on the
+    // first paragraph of a page/column — it's not auto-suppressed. trailingSpacing
+    // is already reset to 0 when a new page/column starts (so we don't carry
+    // spacing across page breaks), so applying effectiveSpaceBefore here is safe.
+    const actualSpaceBefore = effectiveSpaceBefore;
 
     // Calculate position
     const x = getColumnX(state.columnIndex);

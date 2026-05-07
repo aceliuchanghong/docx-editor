@@ -455,13 +455,25 @@ export function measureParagraph(
       currentLine.maxFontMetrics
     );
 
-    // If an inline image is taller than the text-based line height,
-    // use the image height directly (it's already in pixels — no pt→px conversion needed)
+    // If an inline image is taller than the text-based line height, the line
+    // grows to fit the image PLUS the parent paragraph's natural line leading.
+    // Word treats an inline image as a tall glyph sitting on the text baseline:
+    // the image extends above the baseline (full ascent), and the line still
+    // reserves the parent font's normal descent + leading below. Without the
+    // extra leading the image renders flush with its containing cell borders
+    // (no visual breathing room when the image is alone in a table cell).
     const finalTypography = { ...typography };
     if (currentLine.maxImageHeightPx > finalTypography.lineHeight) {
-      finalTypography.lineHeight = currentLine.maxImageHeightPx;
-      finalTypography.ascent = currentLine.maxImageHeightPx * 0.8;
-      finalTypography.descent = currentLine.maxImageHeightPx * 0.2;
+      // Image-only line: line grows to image height plus the parent font's
+      // descent on BOTH sides so the row has visible breathing room above
+      // and below the image (Word's render gives a few px of cell padding
+      // even with tcMar=0). Sibling text cells share the row height, so
+      // their descenders also stay clear of overflow:hidden.
+      const imageH = currentLine.maxImageHeightPx;
+      const buffer = finalTypography.descent;
+      finalTypography.lineHeight = imageH + buffer * 2;
+      finalTypography.ascent = imageH + buffer;
+      // descent stays as text metrics
     }
 
     const line: MeasuredLine = {
