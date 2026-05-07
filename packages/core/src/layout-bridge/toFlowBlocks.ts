@@ -38,7 +38,7 @@ import type {
 } from '../prosemirror/schema/marks';
 import type { Theme, SectionProperties, NumberFormat } from '../types/document';
 import { resolveColor, resolveColorToHex, resolveHighlightToCss } from '../utils/colorResolver';
-import { pointsToPixels } from '../utils/units';
+import { pointsToPixels, halfPointsToPixels, halfPointsToPoints } from '../utils/units';
 import { convertBulletToUnicode } from '../docx/documentParser';
 
 /**
@@ -280,13 +280,73 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
       }
 
       case 'characterSpacing': {
-        // OOXML w:spacing on rPr is character-spacing in twips (twentieths
-        // of a point). For right-aligned text in a cell with tcMar=0, the
-        // trailing letter-spacing is what produces Word's "tiny gap" before
-        // the cell border — without this, text touches the right edge.
-        const spacingTwips = mark.attrs.spacing as number | null;
-        if (spacingTwips != null && spacingTwips !== 0) {
-          formatting.letterSpacing = twipsToPixels(spacingTwips);
+        // The PM `characterSpacing` mark is a multi-attribute container for
+        // four OOXML run-level properties: w:spacing (letter-spacing,
+        // §17.3.2.35), w:position (baseline shift, §17.3.2.24), w:w
+        // (horizontal text scale, §17.3.2.43), and w:kern (kerning
+        // threshold, §17.3.2.18). All four are parsed into the PM mark and
+        // rendered correctly in the hidden ProseMirror toDOM, but the
+        // layout-bridge dropped every attribute except the one we explicitly
+        // case'd, so painted runs lost the values.
+        const attrs = mark.attrs as {
+          spacing: number | null;
+          position: number | null;
+          scale: number | null;
+          kerning: number | null;
+        };
+        if (attrs.spacing != null && attrs.spacing !== 0) {
+          formatting.letterSpacing = twipsToPixels(attrs.spacing);
+        }
+        if (attrs.position != null && attrs.position !== 0) {
+          // w:position is half-points; positive raises (CSS vertical-align
+          // positive raises too).
+          formatting.positionPx = halfPointsToPixels(attrs.position);
+        }
+        if (attrs.scale != null && attrs.scale !== 100) {
+          formatting.horizontalScale = attrs.scale;
+        }
+        if (attrs.kerning != null && attrs.kerning > 0) {
+          // w:kern is in half-points; convert to points so the painter can
+          // gate `font-kerning` by comparing against the run's font size.
+          formatting.kerningMinPt = halfPointsToPoints(attrs.kerning);
+        }
+        break;
+      }
+
+      case 'allCaps':
+        formatting.allCaps = true;
+        break;
+
+      case 'smallCaps':
+        formatting.smallCaps = true;
+        break;
+
+      case 'emboss':
+        formatting.emboss = true;
+        break;
+
+      case 'imprint':
+        formatting.imprint = true;
+        break;
+
+      case 'textShadow':
+        formatting.textShadow = true;
+        break;
+
+      case 'textOutline':
+        formatting.textOutline = true;
+        break;
+
+      case 'emphasisMark': {
+        // CJK emphasis marks (§17.3.2.12). The PM mark stores the variant
+        // type as `attrs.type`; pass it through so the painter can look up
+        // the matching CSS text-emphasis style.
+        const t = mark.attrs.type as string | undefined;
+        if (t === 'dot' || t === 'comma' || t === 'circle' || t === 'underDot') {
+          formatting.emphasisMark = t;
+        } else {
+          // Unknown variant — fall back to dot (Word's default).
+          formatting.emphasisMark = 'dot';
         }
         break;
       }
@@ -348,22 +408,57 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
 }
 
 /**
+ * Resolve the paragraph's style-cascaded run defaults into a `RunFormatting`
+ * baseline that individual runs can inherit. Per ECMA-376 §17.3.2.27 a run
+ * with a partial `w:rFonts` (e.g. only `w:eastAsia`) inherits the missing
+ * sides from the paragraph style → basedOn chain → docDefaults; without
+ * this, runs whose own mark omits `ascii`/`hAnsi` lose the style's font and
+ * fall back to the painter's hardcoded Calibri stack (#392).
+ */
+function paragraphRunDefaults(pmAttrs: PMParagraphAttrs): {
+  fontFamily?: string;
+  fontSize?: number;
+} {
+  const dtf = pmAttrs.defaultTextFormatting as
+    | {
+        fontSize?: number;
+        fontFamily?: { ascii?: string; hAnsi?: string };
+      }
+    | undefined;
+  if (!dtf) return {};
+  const result: { fontFamily?: string; fontSize?: number } = {};
+  if (dtf.fontFamily) {
+    const family = dtf.fontFamily.ascii || dtf.fontFamily.hAnsi;
+    if (family) result.fontFamily = family;
+  }
+  if (dtf.fontSize != null) {
+    // TextFormatting.fontSize is in half-points; RunFormatting.fontSize is points.
+    result.fontSize = dtf.fontSize / 2;
+  }
+  return result;
+}
+
+/**
  * Convert a paragraph node to runs.
  */
 function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksOptions): Run[] {
   const runs: Run[] = [];
   const offset = startPos + 1; // +1 for opening tag
   const theme = _options.theme;
+  const paraDefaults = paragraphRunDefaults(node.attrs as PMParagraphAttrs);
 
   node.forEach((child, childOffset) => {
     const childPos = offset + childOffset;
 
     if (child.isText && child.text) {
-      // Text node - create text run
+      // Text node — create text run. Run-level marks override paragraph
+      // defaults; the spread order below ensures `formatting`'s explicit
+      // values win over the inherited fallback.
       const formatting = extractRunFormatting(child.marks, theme);
       const run: TextRun = {
         kind: 'text',
         text: child.text,
+        ...paraDefaults,
         ...formatting,
         pmStart: childPos,
         pmEnd: childPos + child.nodeSize,
@@ -378,10 +473,11 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
       };
       runs.push(run);
     } else if (child.type.name === 'tab') {
-      // Tab character
+      // Tab character — inherits paragraph defaults the same way text runs do.
       const formatting = extractRunFormatting(child.marks, theme);
       const run: TabRun = {
         kind: 'tab',
+        ...paraDefaults,
         ...formatting,
         pmStart: childPos,
         pmEnd: childPos + child.nodeSize,

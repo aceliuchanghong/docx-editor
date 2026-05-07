@@ -30,6 +30,40 @@ export type RunFormatting = {
   letterSpacing?: number;
   superscript?: boolean;
   subscript?: boolean;
+  /** Render glyphs as uppercase regardless of source case (OOXML w:caps). */
+  allCaps?: boolean;
+  /** Render lowercase glyphs as small uppercase (OOXML w:smallCaps). */
+  smallCaps?: boolean;
+  /**
+   * Vertical baseline shift in CSS pixels (positive = up). OOXML w:position is
+   * authored in half-points; converted to px during the bridge so the painter
+   * can apply it directly via vertical-align without re-doing the math.
+   */
+  positionPx?: number;
+  /**
+   * Horizontal text scale as a percentage (100 = normal, 50 = half-width,
+   * 200 = double-width). OOXML w:w specifies pct in raw % (e.g. 90 means 90%).
+   */
+  horizontalScale?: number;
+  /**
+   * Minimum font size in points at which kerning kicks in (OOXML w:kern, half-
+   * points in source). When this run's effective font size is at or above this
+   * threshold, the painter enables font-kerning: normal.
+   */
+  kerningMinPt?: number;
+  /** Engraved/imprint effect (OOXML w:imprint, §17.3.2.18). */
+  imprint?: boolean;
+  /** Embossed/raised effect (OOXML w:emboss, §17.3.2.13). */
+  emboss?: boolean;
+  /** Drop-shadow effect (OOXML w:shadow, §17.3.2.31). */
+  textShadow?: boolean;
+  /** Outlined / hollow text (OOXML w:outline, §17.3.2.23). */
+  textOutline?: boolean;
+  /**
+   * CJK emphasis mark (OOXML w:em, §17.3.2.12). Maps to CSS `text-emphasis`
+   * with a position and style; the painter handles the variant lookup.
+   */
+  emphasisMark?: 'dot' | 'comma' | 'circle' | 'underDot';
   /** Hyperlink info if this run is a link */
   hyperlink?: { href: string; tooltip?: string };
   /** Footnote reference ID (if this run contains a footnote reference) */

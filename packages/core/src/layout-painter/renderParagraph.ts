@@ -135,6 +135,77 @@ function applyRunStyles(
     element.style.letterSpacing = `${run.letterSpacing}px`;
   }
 
+  // Caps / small-caps. OOXML w:caps = render glyphs uppercase; w:smallCaps =
+  // render lowercase glyphs as small uppercase. Map directly onto the
+  // matching CSS properties — same translation the hidden PM toDOM uses.
+  if (run.allCaps) {
+    element.style.textTransform = 'uppercase';
+  }
+  if (run.smallCaps) {
+    element.style.fontVariant = 'small-caps';
+  }
+
+  // Baseline shift (OOXML w:position). Already converted from half-points to
+  // CSS px on the bridge; positive raises text the same way CSS does.
+  if (run.positionPx) {
+    element.style.verticalAlign = `${run.positionPx}px`;
+  }
+
+  // Horizontal scale (OOXML w:w). Stored as a percent (100 = normal). Apply
+  // via scaleX on an inline-block so the transform actually takes effect.
+  if (run.horizontalScale && run.horizontalScale !== 100) {
+    element.style.display = 'inline-block';
+    element.style.transform = `scaleX(${run.horizontalScale / 100})`;
+    element.style.transformOrigin = 'left center';
+  }
+
+  // Kerning gate (OOXML w:kern). Enable font-kerning when the run's font
+  // size is at or above the threshold; otherwise leave it at the browser
+  // default (`auto`). The painter only knows the resolved fontSize at this
+  // point — assume the gate is satisfied if a non-zero threshold was set.
+  if (run.kerningMinPt && run.kerningMinPt > 0) {
+    const fontSizePt = run.fontSize ?? 11;
+    if (fontSizePt >= run.kerningMinPt) {
+      element.style.fontKerning = 'normal';
+    }
+  }
+
+  // Cosmetic effect marks (§17.3.2.13/.18/.23/.31/.12). The hidden PM
+  // toDOM uses the same CSS recipes — keep them in sync so the painted
+  // and editable representations match.
+  if (run.emboss) {
+    element.style.textShadow = '1px 1px 1px rgba(255,255,255,0.5), -1px -1px 1px rgba(0,0,0,0.3)';
+  }
+  if (run.imprint) {
+    element.style.textShadow = '-1px -1px 1px rgba(255,255,255,0.5), 1px 1px 1px rgba(0,0,0,0.3)';
+  }
+  if (run.textShadow && !run.emboss && !run.imprint) {
+    // Don't double-apply when emboss/imprint already set text-shadow.
+    element.style.textShadow = '1px 1px 2px rgba(0,0,0,0.3)';
+  }
+  if (run.textOutline) {
+    element.style.webkitTextStroke = '1px currentColor';
+    (element.style as CSSStyleDeclaration & { webkitTextFillColor?: string }).webkitTextFillColor =
+      'transparent';
+  }
+  if (run.emphasisMark) {
+    const variant =
+      run.emphasisMark === 'comma'
+        ? 'filled sesame'
+        : run.emphasisMark === 'circle'
+          ? 'filled circle'
+          : 'filled dot';
+    const position = run.emphasisMark === 'underDot' ? 'under right' : 'over right';
+    element.style.textEmphasis = `${variant}`;
+    element.style.textEmphasisPosition = position;
+    // Safari prefix.
+    (element.style as CSSStyleDeclaration & { webkitTextEmphasis?: string }).webkitTextEmphasis =
+      variant;
+    (
+      element.style as CSSStyleDeclaration & { webkitTextEmphasisPosition?: string }
+    ).webkitTextEmphasisPosition = position;
+  }
+
   // Highlight (background color)
   if (run.highlight) {
     element.style.backgroundColor = run.highlight;
