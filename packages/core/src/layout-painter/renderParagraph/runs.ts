@@ -579,20 +579,14 @@ export function renderFieldRun(run: FieldRun, doc: Document, context: RenderCont
     // OTHER fields use fallback
   }
 
-  // Create a text run with the resolved value
+  // Create a text run with the resolved value. Spread the field run so every
+  // RunFormatting field (not just font/size/color) carries through — Word
+  // renders the field result with the result run's full w:rPr. The extra
+  // `fieldType`/`fallback` keys are inert on a TextRun.
   const resolvedRun: TextRun = {
+    ...run,
     kind: 'text',
     text,
-    bold: run.bold,
-    italic: run.italic,
-    underline: run.underline,
-    strike: run.strike,
-    color: run.color,
-    highlight: run.highlight,
-    fontFamily: run.fontFamily,
-    fontSize: run.fontSize,
-    pmStart: run.pmStart,
-    pmEnd: run.pmEnd,
   };
 
   return renderTextRun(resolvedRun, doc, context?.resolvedCommentIds);
