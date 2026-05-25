@@ -44,6 +44,7 @@ import {
   pixelsToTwips,
   type TabContext,
 } from '../../prosemirror/utils/tabCalculator';
+import { getListMarkerInlineWidth } from './listMarkerWidth';
 
 // Default values - match OOXML spec defaults
 const DEFAULT_FONT_SIZE = 11; // 11pt (Word 2007+ default)
@@ -364,8 +365,13 @@ export function measureParagraph(
   // Calculate base available widths (before floating image adjustment)
   const bodyContentWidth = Math.max(1, maxWidth - indentLeft - indentRight);
   // First line offset: positive = first-line indent (less space), negative = hanging (more space)
-  // Subtracting gives correct width in both cases
-  const baseFirstLineWidth = Math.max(1, bodyContentWidth - firstLineOffset);
+  // Subtracting gives correct width in both cases.
+  // Inline list markers in the firstLine path eat into the body width too —
+  // subtract the marker's footprint so long markers don't push the last run
+  // past the right edge. The hanging path already widens via firstLineOffset
+  // (= firstLine − hanging) so it must not be subtracted again.
+  const markerInlineWidth = (indent?.hanging ?? 0) === 0 ? getListMarkerInlineWidth(block) : 0;
+  const baseFirstLineWidth = Math.max(1, bodyContentWidth - firstLineOffset - markerInlineWidth);
 
   // Track cumulative height for floating zone calculations
   let cumulativeHeight = 0;
@@ -934,20 +940,10 @@ export function measureParagraph(
   finalizeLine();
 
   // Calculate total height — include floatSkipBefore from lines bumped past floats.
-  let totalHeight = lines.reduce(
+  const totalHeight = lines.reduce(
     (sum, line) => sum + line.lineHeight + (line.floatSkipBefore ?? 0),
     0
   );
-
-  // The renderer wraps a list marker in its own line element when there is no
-  // hanging indent reserved for it (matching Word's <w:suff w:val="tab"/>
-  // wrap, see renderParagraph.ts). Account for that extra row here so the
-  // paragraph reports the correct height to its container.
-  const hasOwnLineMarker =
-    !!attrs?.listMarker && !attrs?.listMarkerHidden && (indent?.hanging ?? 0) === 0;
-  if (hasOwnLineMarker && lines.length > 0) {
-    totalHeight += lines[0].lineHeight;
-  }
 
   // Add spacing before/after
   let totalWithSpacing = totalHeight;

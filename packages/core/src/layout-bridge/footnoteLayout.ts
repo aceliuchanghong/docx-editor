@@ -227,6 +227,11 @@ export type ConvertFootnoteOptions = {
   theme?: Theme | null;
   /** Measure callback supplied by the rendering adapter. */
   measureBlocks: MeasureBlocksFn;
+  /**
+   * Doc-level `w:defaultTabStop` (twips) from the body so list markers
+   * inside footnotes honor the same tab grid.
+   */
+  defaultTabStopTwips?: number | null;
 };
 
 /**
@@ -246,6 +251,7 @@ export function convertFootnoteToContent(
   const pmDoc = footnoteToProseDoc(footnote.content, {
     styles: options.styles ?? undefined,
     theme: options.theme ?? null,
+    defaultTabStopTwips: options.defaultTabStopTwips ?? null,
   });
   const rawBlocks = toFlowBlocks(pmDoc, { theme: options.theme ?? undefined });
   const blocks = applyFootnotePresentation(rawBlocks, displayNumber);

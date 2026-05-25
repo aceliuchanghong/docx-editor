@@ -503,6 +503,8 @@ export type ParagraphAttrs = {
     listMarkerHidden?: boolean;
     listMarkerFontFamily?: string;
     listMarkerFontSize?: number;
+    listMarkerSuffix?: 'tab' | 'space' | 'nothing';
+    defaultTabStopTwips?: number;
     defaultFontSize?: number;
     defaultFontFamily?: string;
     suppressEmptyParagraphHeight?: boolean;

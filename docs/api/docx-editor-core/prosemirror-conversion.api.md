@@ -30,6 +30,7 @@ export function toProseDoc(document: Document_2, options?: ToProseDocOptions): N
 
 // @public
 export interface ToProseDocOptions {
+    defaultTabStopTwips?: number | null;
     styles?: StyleDefinitions;
 }
 
