@@ -241,6 +241,7 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
     const onEditorViewReadyRef = useRef(onEditorViewReady);
     const onEditorViewDestroyRef = useRef(onEditorViewDestroy);
     const onKeyDownRef = useRef(onKeyDown);
+    const readOnlyRef = useRef(readOnly);
 
     // Keep refs in sync
     onTransactionRef.current = onTransaction;
@@ -248,6 +249,7 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
     onEditorViewReadyRef.current = onEditorViewReady;
     onEditorViewDestroyRef.current = onEditorViewDestroy;
     onKeyDownRef.current = onKeyDown;
+    readOnlyRef.current = readOnly;
 
     // Keep document ref in sync
     documentRef.current = document;
@@ -275,7 +277,10 @@ const HiddenProseMirrorComponent = forwardRef<HiddenProseMirrorRef, HiddenProseM
 
       const editorProps: DirectEditorProps = {
         state: initialState,
-        editable: () => !readOnly,
+        // Read through `readOnlyRef.current` so changes to the prop after
+        // EditorView construction propagate without re-mounting the view.
+        // PM calls `editable()` on every input check.
+        editable: () => !readOnlyRef.current,
         // Keeps `overflow-anchor` on the PM root across outer-deco sync (prosemirror#933).
         attributes: {
           style: 'overflow-anchor: none',

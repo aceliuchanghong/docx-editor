@@ -29,6 +29,13 @@ export interface UseSelectionSyncOptions {
   editorView: Ref<EditorView | null>;
   pagesRef: Ref<HTMLElement | null>;
   selectedImage: ShallowRef<ImageSelectionInfo | null>;
+  /**
+   * True while the user is editing a header/footer. When set, the body PM's
+   * caret + selection rects MUST stay hidden so the user doesn't see two
+   * carets blinking simultaneously (one in the painted header, one in the
+   * body). The HF view's own caret rect is drawn by DocxEditor.vue.
+   */
+  isHfEditing?: Ref<boolean>;
 }
 
 export interface UseSelectionSyncReturn {
@@ -57,6 +64,10 @@ export function useSelectionSync(opts: UseSelectionSyncOptions): UseSelectionSyn
     if (!container || !view) return;
 
     clearOverlay();
+
+    // In HF edit mode the body PM has no business showing a caret or
+    // selection — the user is editing the header/footer above.
+    if (opts.isHfEditing?.value) return;
 
     // Keep `selectedImage` in sync with the PM selection: when the doc holds a
     // NodeSelection on an image (e.g. the overlay just re-selected it after a

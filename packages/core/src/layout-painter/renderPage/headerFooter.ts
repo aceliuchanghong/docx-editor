@@ -307,7 +307,11 @@ export function renderHeaderFooterContent(
         runs: inlineRuns,
       };
 
-      // Create a synthetic fragment for the paragraph
+      // Create a synthetic fragment for the paragraph. `pmStart` / `pmEnd`
+      // are essential for HF caret resolution — without them the painter
+      // emits no `data-pm-*` markers on this paragraph wrapper, and empty
+      // paragraphs (or cursors at line boundaries) lose any anchor at all.
+      // `computeHfCaretRectFromView`'s fallback chain depends on these.
       const syntheticFragment: ParagraphFragment = {
         kind: 'paragraph',
         blockId: paragraphBlock.id,
@@ -317,6 +321,8 @@ export function renderHeaderFooterContent(
         height: paragraphMeasure.totalHeight,
         fromLine: 0,
         toLine: paragraphMeasure.lines.length,
+        pmStart: paragraphBlock.pmStart,
+        pmEnd: paragraphBlock.pmEnd,
       };
 
       // Render paragraph fragment (with floating images filtered out). The

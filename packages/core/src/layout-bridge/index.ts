@@ -105,6 +105,10 @@ export {
   resolveHeaderFooterVisualTop,
   calculateHeaderFooterVisualBounds,
   convertHeaderFooterToContent,
+  convertHeaderFooterPmDocToContent,
+  computeHfCaretRectFromView,
+  computeHfSelectionRectsFromView,
+  invalidateHfDomCache,
 } from './headerFooterLayout';
 export type { HeaderFooterMetrics, ConvertHeaderFooterOptions } from './headerFooterLayout';
 
